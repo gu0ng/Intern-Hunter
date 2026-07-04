@@ -1,12 +1,10 @@
 ﻿import re
 from typing import Any
 
-import yaml
-
-from app.config import settings
 from app.schemas.resume import ResumeParseResult, ResumeProfile
 from app.tools.deepseek_client import LLMClientError, call_deepseek_json
 from app.tools.pdf_resume_tool import extract_pdf_text
+from app.tools.resume_text_store import save_resume_text
 
 
 RESUME_SYSTEM_PROMPT = """
@@ -130,12 +128,12 @@ class ResumeParseTool:
         return parse_resume_text(raw_text, save=save)
 
 
-def parse_resume_pdf_bytes(pdf_bytes: bytes, save: bool = False) -> ResumeParseResult:
+def parse_resume_pdf_bytes(pdf_bytes: bytes, save: bool = False, source_filename: str = "resume.pdf") -> ResumeParseResult:
     raw_text = extract_pdf_text(pdf_bytes)
-    return parse_resume_text(raw_text, save=save)
+    return parse_resume_text(raw_text, save=save, source_filename=source_filename)
 
 
-def parse_resume_text(raw_text: str, save: bool = False) -> ResumeParseResult:
+def parse_resume_text(raw_text: str, save: bool = False, source_filename: str = "resume.txt") -> ResumeParseResult:
     try:
         payload = call_deepseek_json(
             RESUME_SYSTEM_PROMPT,
@@ -163,16 +161,9 @@ def parse_resume_text(raw_text: str, save: bool = False) -> ResumeParseResult:
         )
 
     if save:
-        save_resume_profile(result.profile)
+        save_resume_text(raw_text, source_filename=source_filename)
         result.saved = True
     return result
-
-
-def save_resume_profile(profile: ResumeProfile) -> None:
-    path = settings.resolve_path(settings.resume_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as file:
-        yaml.safe_dump(profile.model_dump(), file, allow_unicode=True, sort_keys=False)
 
 
 def _normalize_resume_payload(payload: dict[str, Any]) -> dict[str, Any]:

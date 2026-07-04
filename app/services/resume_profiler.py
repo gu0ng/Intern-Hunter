@@ -1,26 +1,21 @@
-﻿from pathlib import Path
+from pathlib import Path
 
 import yaml
 
 from app.config import settings
 from app.schemas.resume import ResumeProfile
+from app.tools.resume_parse_tool import parse_resume_text
+from app.tools.resume_text_store import load_current_resume_text
 
 
 def load_resume_profile(path: str | Path | None = None) -> ResumeProfile:
-    resume_path = settings.resolve_path(str(path or settings.resume_path))
-    if not resume_path.exists():
-        raise FileNotFoundError(f"Resume profile not found: {resume_path}")
+    if path is not None:
+        return _load_yaml_resume_profile(path)
 
-    with resume_path.open("r", encoding="utf-8") as file:
-        data = yaml.safe_load(file) or {}
-    return ResumeProfile.model_validate(data)
+    raw_text = load_current_resume_text()
+    return parse_resume_text(raw_text, save=False, source_filename="current_resume.txt").profile
 
 
-def save_resume_profile(profile: ResumeProfile, path: str | Path | None = None) -> None:
-    resume_path = settings.resolve_path(str(path or settings.resume_path))
-    resume_path.parent.mkdir(parents=True, exist_ok=True)
-    with resume_path.open("w", encoding="utf-8") as file:
-        yaml.safe_dump(profile.model_dump(), file, allow_unicode=True, sort_keys=False)
 
 
 def collect_resume_keywords(profile: ResumeProfile) -> set[str]:
@@ -33,6 +28,16 @@ def collect_resume_keywords(profile: ResumeProfile) -> set[str]:
         for highlight in project.highlights:
             keywords.update(_split_keywords(highlight))
     return {keyword.strip() for keyword in keywords if keyword and keyword.strip()}
+
+
+def _load_yaml_resume_profile(path: str | Path) -> ResumeProfile:
+    resume_path = settings.resolve_path(str(path))
+    if not resume_path.exists():
+        raise FileNotFoundError(f"Resume profile not found: {resume_path}")
+
+    with resume_path.open("r", encoding="utf-8") as file:
+        data = yaml.safe_load(file) or {}
+    return ResumeProfile.model_validate(data)
 
 
 def _split_keywords(text: str) -> list[str]:

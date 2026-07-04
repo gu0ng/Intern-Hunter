@@ -17,7 +17,9 @@ class Settings:
     openai_base_url: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./data/internship_pilot.db")
-    resume_path: str = os.getenv("RESUME_PATH", "data/resume/resume.yaml")
+    resume_text_dir: str = os.getenv("RESUME_TEXT_DIR", "data/resume/texts")
+    current_resume_text_path: str = os.getenv("CURRENT_RESUME_TEXT_PATH", "data/resume/current_resume.txt")
+    current_resume_meta_path: str = os.getenv("CURRENT_RESUME_META_PATH", "data/resume/current_resume.json")
     enable_llm_parsing: bool = os.getenv("ENABLE_LLM_PARSING", "true").lower() == "true"
     api_base_url: str = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
     redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")

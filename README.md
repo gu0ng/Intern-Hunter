@@ -3,17 +3,18 @@
 面向实习投递和面试准备的个人求职 Agent 系统。当前版本已经从纯规则 MVP 升级为：
 
 ```text
-PDF 简历上传 -> PDF 文本抽取工具 -> DeepSeek 简历解析工具 -> ResumeProfile
-JD 粘贴 -> DeepSeek JD 解析工具 -> 规则评分工具 -> DeepSeek 建议生成工具 -> SQLite 入库
+PDF 简历上传 -> PDF 文本抽取工具 -> 仅保存当前简历文本与历史文本快照
+岗位 JD 粘贴 -> Redis/SQLite 去重 -> DeepSeek JD 解析工具 -> 保存结构化岗位
+匹配度报告 -> 当前简历文本临时解析 -> 选择已保存 JD -> 规则评分 + DeepSeek LLM Judge 对比
 Streamlit 前端 -> FastAPI HTTP API -> LangGraph Agent 工作流
 ```
 
 ## 当前能力
 
-- 支持上传 PDF 简历，抽取 PDF 文本后调用 DeepSeek 解析结构化简历画像。
-- 支持粘贴岗位 JD，优先调用 DeepSeek 解析结构化岗位信息，失败时规则降级。
-- 使用规则评分计算技能、项目、方向、约束和准备成本分数。
-- 使用 DeepSeek 基于规则评分补充优势、短板、投递建议、简历修改建议和准备建议。
+- 支持上传 PDF 简历，抽取 PDF 文本后只保存文本内容；结构化简历画像只在预览或匹配时临时生成。
+- 支持粘贴岗位 JD，优先检查 Redis/SQLite 去重，未命中时调用 DeepSeek 解析结构化岗位并保存。
+- 匹配度报告固定使用当前上传的简历文本，选择不同已保存 JD 生成报告。
+- 报告左右对比展示规则评分和 DeepSeek LLM Judge 独立判断。
 - 使用 LangGraph 编排岗位匹配 Agent 工作流。
 - 使用 FastAPI 提供后端 API，Streamlit 只通过 HTTP 调用后端。
 - 使用 SQLite 保存岗位、匹配报告、面试准备和投递状态。
@@ -23,9 +24,10 @@ Streamlit 前端 -> FastAPI HTTP API -> LangGraph Agent 工作流
 ```text
 app/tools/deepseek_client.py       DeepSeek JSON API 调用工具
 app/tools/pdf_resume_tool.py       PDF 文本抽取工具
-app/tools/resume_parse_tool.py     简历解析工具：PDF 文本 -> ResumeProfile
+app/tools/resume_parse_tool.py     简历解析工具：PDF 文本 -> 临时 ResumeProfile
 app/tools/jd_parse_tool.py         JD 解析工具：JD 文本 -> JobStructured
-app/tools/match_advice_tool.py     匹配建议工具：规则报告 -> DeepSeek 中文建议
+app/tools/resume_text_store.py     简历文本存储工具：保存当前文本和历史快照
+app/tools/llm_judge_tool.py         LLM Judge 工具：简历文本画像 + JD -> 独立匹配判断
 app/tools/persistence_tool.py      持久化工具：岗位和报告 -> SQLite
 ```
 
@@ -37,7 +39,7 @@ app/tools/persistence_tool.py      持久化工具：岗位和报告 -> SQLite
 jd_parse_node
   -> resume_load_node
   -> match_score_node
-  -> llm_advice_node
+  -> llm_judge_node
   -> gap_analysis_node
   -> recommendation_node
   -> save_result_node
@@ -47,7 +49,7 @@ jd_parse_node
 
 - `jd_parse_node` 调用 DeepSeek 解析 JD，失败时规则降级。
 - `match_score_node` 始终使用规则评分，保证分数可解释。
-- `llm_advice_node` 调用 DeepSeek 基于规则结果生成具体建议。
+- `llm_judge_node` 调用 DeepSeek LLM Judge 直接判断简历与岗位的适配程度。
 - `save_result_node` 使用 SQLite 保存岗位和报告。
 
 ## 快速开始
@@ -94,12 +96,15 @@ pytest
 ```text
 GET  /health
 GET  /resume/profile
-PUT  /resume/profile
+GET  /resume/text/current
+GET  /resume/texts
 POST /resume/parse-pdf
 GET  /jobs
-GET  /jobs/{job_id}
+POST /jobs/analyze
 POST /jobs/parse
+GET  /jobs/{job_id}
 POST /match/run
+POST /match/jobs/{job_id}/run
 GET  /match/{job_id}
 POST /interview/{job_id}/generate
 GET  /interview/{job_id}

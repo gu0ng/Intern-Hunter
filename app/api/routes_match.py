@@ -13,7 +13,10 @@ router = APIRouter(prefix="/match", tags=["match"])
 
 @router.post("/run", response_model=MatchReport)
 def run_match(request: JobMatchRequest):
-    return run_job_match_agent(request.jd_text, persist=True)
+    try:
+        return run_job_match_agent(request.jd_text, persist=True)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/jobs/{job_id}/run", response_model=MatchReport)
@@ -22,6 +25,8 @@ def run_match_for_job(job_id: int):
         return run_job_match_for_saved_job(job_id, persist=True)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/{job_id}", response_model=MatchReport)

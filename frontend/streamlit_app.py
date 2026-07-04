@@ -107,9 +107,9 @@ page = st.sidebar.radio("页面", ["简历解析", "岗位分析", "匹配度报
 
 if page == "简历解析":
     st.title("简历 PDF 解析")
-    st.write("上传 PDF 后，系统会先抽取文本，再调用 DeepSeek 将简历解析为结构化 ResumeProfile。")
+    st.write("上传 PDF 后，系统会先抽取文本；保存时只保存 PDF 抽取文本，并将其设为当前用于匹配的简历。")
     uploaded = st.file_uploader("上传简历 PDF", type=["pdf"])
-    save_profile = st.checkbox("解析后保存为当前简历画像 data/resume/resume.yaml", value=True)
+    save_profile = st.checkbox("保存为当前简历文本", value=True)
     if st.button("解析简历", type="primary"):
         if uploaded is None:
             st.warning("请先上传 PDF 文件。")
@@ -122,10 +122,13 @@ if page == "简历解析":
                         params={"save": str(save_profile).lower()},
                         timeout=180,
                     )
-                st.success("简历解析完成。" if result.get("llm_used") else "简历已用规则降级解析，请检查 DeepSeek 配置。")
+                if result.get("saved"):
+                    st.success("简历文本已保存为当前匹配简历。" if result.get("llm_used") else "简历文本已保存，结构化预览为规则降级结果，请检查 DeepSeek 配置。")
+                else:
+                    st.success("简历解析完成，未保存当前简历文本。" if result.get("llm_used") else "结构化预览为规则降级结果，未保存当前简历文本。")
                 if result.get("fallback_reason"):
                     st.warning(result["fallback_reason"])
-                st.subheader("结构化简历画像")
+                st.subheader("结构化预览（不落盘）")
                 st.json(result.get("profile", {}))
                 with st.expander("PDF 抽取文本"):
                     st.text(result.get("raw_text", "")[:8000])
@@ -164,25 +167,26 @@ elif page == "匹配度报告":
     if not jobs:
         st.info("还没有保存的岗位，请先在“岗位分析”页面分析并保存一个 JD。")
     else:
-        selected_resume = st.selectbox("选择简历", ["当前简历画像 data/resume/resume.yaml"])
         try:
-            profile = api_get("/resume/profile")
-            with st.expander(selected_resume):
-                st.json(profile)
+            current_resume = api_get("/resume/text/current")
+            meta = current_resume.get("meta", {})
+            st.success(f"当前匹配简历：{meta.get('source_filename', '已上传简历')}，文本长度 {meta.get('char_count', len(current_resume.get('raw_text', '')))} 字")
+            with st.expander("当前简历 PDF 抽取文本"):
+                st.text(current_resume.get("raw_text", "")[:12000])
         except Exception as exc:
-            st.warning(f"当前简历画像不可用，请先在“简历解析”页面上传并保存简历：{exc}")
+            st.warning(f"当前没有可用于匹配的简历文本，请先在“简历解析”页面上传并保存简历：{exc}")
 
         selected = st.selectbox(
             "选择岗位 JD",
             jobs,
             format_func=lambda row: f"{row['id']} | {row['company'] or '未知公司'} | {row['title'] or '未知岗位'}",
         )
-        st.caption("岗位 JD 在“岗位分析”页面完成解析和保存；这里才会读取所选简历与岗位并生成匹配度报告。")
+        st.caption("岗位 JD 在“岗位分析”页面完成解析和保存；这里固定使用当前上传的简历文本与所选岗位生成匹配度报告。")
 
         generated_report = None
         if st.button("生成/重新生成匹配度报告", type="primary"):
             try:
-                with st.spinner("正在读取所选简历和岗位，执行规则评分并调用 DeepSeek LLM Judge..."):
+                with st.spinner("正在临时解析当前简历文本，读取所选岗位，执行规则评分并调用 DeepSeek LLM Judge..."):
                     generated_report = api_post(f"/match/jobs/{selected['id']}/run", timeout=180)
                 st.success("匹配度报告已生成。")
             except Exception as exc:

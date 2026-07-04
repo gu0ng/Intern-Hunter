@@ -19,3 +19,6 @@ data/*.sqlite3
 .vscode/
 
 *.log
+data/resume/current_resume.txt
+data/resume/current_resume.json
+data/resume/texts/
