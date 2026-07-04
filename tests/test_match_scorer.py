@@ -1,0 +1,26 @@
+from app.schemas.job import JobStructured
+from app.services.match_scorer import score_match
+from app.services.resume_profiler import load_resume_profile
+
+
+def test_score_match_high_for_ai_agent_role():
+    profile = load_resume_profile("data/resume/resume.yaml")
+    job = JobStructured(
+        company="某智能科技公司",
+        title="AI Agent 应用研发实习生",
+        location="北京",
+        job_type="实习",
+        category="AI应用研发 / 大模型",
+        required_skills=["Python", "FastAPI", "Linux", "Agent", "RAG"],
+        keywords=["大模型", "LLM", "Agent", "RAG", "FastAPI", "AI安全"],
+        degree_requirement="本科及以上",
+        intern_duration="实习 3 个月以上",
+    )
+
+    report = score_match(job, profile)
+
+    assert report.overall_score >= 70
+    assert report.skill_score >= 70
+    assert report.direction_score >= 75
+    assert report.recommendation
+

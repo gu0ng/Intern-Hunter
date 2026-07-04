@@ -1,0 +1,71 @@
+name: "示例用户"
+education: "本科"
+major: "网络空间安全"
+target_roles:
+  - "AI应用研发"
+  - "AI Agent"
+  - "大模型评测"
+  - "AI安全"
+  - "后端平台"
+skills:
+  - "Python"
+  - "PyTorch"
+  - "机器学习"
+  - "Linux"
+  - "FastAPI"
+  - "后端"
+  - "SQL"
+  - "数据库"
+  - "AI安全"
+  - "大模型评测"
+  - "风险检测"
+projects:
+  - name: "大模型训练数据异常识别"
+    description: "围绕训练数据质量，识别异常样本、低质量样本和潜在风险数据。"
+    keywords:
+      - "大模型"
+      - "异常识别"
+      - "风险检测"
+      - "Python"
+      - "PyTorch"
+    highlights:
+      - "设计数据规则与模型特征，输出可解释异常原因。"
+      - "对误报样本进行复盘，优化检测规则。"
+  - name: "输入侧风险检测"
+    description: "针对大模型输入侧安全风险进行检测和分类。"
+    keywords:
+      - "AI安全"
+      - "风险检测"
+      - "大模型评测"
+      - "Python"
+    highlights:
+      - "覆盖提示注入、越权请求和敏感内容等风险类型。"
+      - "沉淀评测样例和风险标签体系。"
+  - name: "Intern-Hunter 求职 Agent"
+    description: "基于 FastAPI、Streamlit、SQLite 和 LangGraph 的岗位匹配 Agent。"
+    keywords:
+      - "Agent"
+      - "LangGraph"
+      - "Tool Calling"
+      - "FastAPI"
+      - "SQLite"
+      - "RAG"
+    highlights:
+      - "实现 JD 解析、简历画像读取、规则评分和结果入库。"
+      - "后续计划接入知识库检索和 Docker 本地部署。"
+internships: []
+research_direction:
+  - "大模型训练数据异常识别"
+  - "输入侧风险检测"
+  - "AI安全评测"
+strengths:
+  - "具备 AI 安全和大模型评测项目背景。"
+  - "熟悉 Python、PyTorch、Linux 和基础后端开发。"
+  - "能将岗位 JD 拆解为结构化任务并做可解释评分。"
+weaknesses:
+  - "正式实习经历较少。"
+  - "Agent / RAG 工程项目仍需继续完善部署和检索能力。"
+city_preference:
+  - "北京"
+availability: "可线下实习，具体每周天数需结合课业确认。"
+
