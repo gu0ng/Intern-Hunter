@@ -1,4 +1,4 @@
-﻿import re
+import re
 
 import yaml
 
@@ -29,6 +29,7 @@ def parse_resume_text(raw_text: str, save: bool = False) -> ResumeParseResult:
             RESUME_SYSTEM_PROMPT,
             "请解析以下简历文本，输出 JSON：\n\n" + raw_text[:20000],
         )
+        payload = _normalize_resume_payload(payload)
         profile = ResumeProfile.model_validate(payload)
         result = ResumeParseResult(profile=profile, raw_text=raw_text, saved=False, llm_used=True)
     except (LLMClientError, ValueError, KeyError) as exc:
@@ -53,6 +54,40 @@ def save_resume_profile(profile: ResumeProfile) -> None:
     with path.open("w", encoding="utf-8") as file:
         yaml.safe_dump(profile.model_dump(), file, allow_unicode=True, sort_keys=False)
 
+
+def _normalize_resume_payload(payload: dict) -> dict:
+    """Make LLM output tolerant before Pydantic validation."""
+    list_fields = [
+        "target_roles",
+        "skills",
+        "projects",
+        "internships",
+        "research_direction",
+        "strengths",
+        "weaknesses",
+        "city_preference",
+    ]
+    for field in list_fields:
+        value = payload.get(field)
+        if value is None or value == "":
+            payload[field] = []
+        elif isinstance(value, str):
+            payload[field] = [item.strip() for item in re.split(r"[、,，;；\n]", value) if item.strip()]
+
+    normalized_projects = []
+    for item in payload.get("projects", []):
+        if isinstance(item, str):
+            normalized_projects.append({"name": item, "description": "", "keywords": [], "highlights": []})
+        elif isinstance(item, dict):
+            for key in ["keywords", "highlights"]:
+                value = item.get(key)
+                if value is None or value == "":
+                    item[key] = []
+                elif isinstance(value, str):
+                    item[key] = [part.strip() for part in re.split(r"[、,，;；\n]", value) if part.strip()]
+            normalized_projects.append(item)
+    payload["projects"] = normalized_projects
+    return payload
 
 def _fallback_resume_parse(raw_text: str) -> ResumeProfile:
     skills = _extract_known_terms(

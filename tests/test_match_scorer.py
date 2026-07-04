@@ -1,10 +1,25 @@
-from app.schemas.job import JobStructured
+﻿from app.schemas.job import JobStructured
+from app.schemas.resume import ResumeProfile, ResumeProject
 from app.services.match_scorer import score_match
-from app.services.resume_profiler import load_resume_profile
 
 
 def test_score_match_high_for_ai_agent_role():
-    profile = load_resume_profile("data/resume/resume.yaml")
+    profile = ResumeProfile(
+        education="本科",
+        major="网络空间安全",
+        target_roles=["AI Agent", "AI应用研发", "大模型评测"],
+        skills=["Python", "FastAPI", "Linux", "Agent", "RAG", "AI安全"],
+        projects=[
+            ResumeProject(
+                name="Intern-Hunter 求职 Agent",
+                description="基于 FastAPI 和 LangGraph 的求职 Agent。",
+                keywords=["Agent", "RAG", "FastAPI", "AI安全"],
+                highlights=["实现 JD 解析、简历画像读取、规则评分和结果入库。"],
+            )
+        ],
+        research_direction=["AI安全", "大模型评测"],
+        city_preference=["北京"],
+    )
     job = JobStructured(
         company="某智能科技公司",
         title="AI Agent 应用研发实习生",
@@ -23,4 +38,3 @@ def test_score_match_high_for_ai_agent_role():
     assert report.skill_score >= 70
     assert report.direction_score >= 75
     assert report.recommendation
-
