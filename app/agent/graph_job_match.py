@@ -1,4 +1,5 @@
 ﻿from app.agent.state import JobMatchState
+from app.db import crud
 from app.db.crud import get_latest_match_report, get_latest_match_report_by_jd_hash
 from app.db.database import SessionLocal, init_db
 from app.schemas.match import MatchReport
@@ -139,6 +140,33 @@ def run_job_match_agent(jd_text: str, resume_path: str | None = None, persist: b
     except ImportError:
         result = _run_sequential(state)
     return result["report"]
+
+
+def run_job_match_for_saved_job(job_id: int, resume_path: str | None = None, persist: bool = True) -> MatchReport:
+    init_db()
+    with SessionLocal() as db:
+        job = crud.get_job_structured(db, job_id)
+        db_job = crud.get_job(db, job_id)
+        if not job or not db_job:
+            raise ValueError(f"Job not found: {job_id}")
+
+        resume = load_resume_profile(resume_path)
+        report = score_match(job, resume)
+        report.score_details["cache_hit"] = "not_applicable"
+        report.score_details["job_id"] = str(job_id)
+        if db_job.jd_hash:
+            report.score_details["jd_hash"] = db_job.jd_hash
+        report = enrich_match_report_with_deepseek(job, resume, report)
+        state: JobMatchState = {"report": report}
+        state = gap_analysis_node(state)
+        state = recommendation_node(state)
+        report = state["report"]
+        if persist:
+            report = crud.create_match_report_for_job(db, job_id, report, jd_hash=db_job.jd_hash)
+        else:
+            report.job_id = job_id
+            report.job = job
+        return report
 
 
 def _run_sequential(state: JobMatchState) -> JobMatchState:

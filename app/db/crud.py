@@ -1,4 +1,4 @@
-﻿import json
+import json
 from datetime import datetime
 from typing import Any
 
@@ -14,6 +14,24 @@ from app.tools.hash_utils import compute_jd_hash
 APPLICATION_STATUSES = ["未投递", "已投递", "简历筛选中", "笔试", "一面", "二面", "HR 面", "已拒", "已 offer", "放弃"]
 
 
+def create_job(db: Session, jd_text: str, job: JobStructured, jd_hash: str | None = None) -> models.Job:
+    jd_hash = jd_hash or compute_jd_hash(jd_text)
+    existing = get_job_by_jd_hash(db, jd_hash)
+    if existing:
+        _ensure_application(db, existing.id)
+        db.commit()
+        db.refresh(existing)
+        return existing
+
+    db_job = _build_job_model(jd_text, job, jd_hash)
+    db.add(db_job)
+    db.flush()
+    _ensure_application(db, db_job.id)
+    db.commit()
+    db.refresh(db_job)
+    return db_job
+
+
 def create_job_with_report(db: Session, jd_text: str, job: JobStructured, report: MatchReport, jd_hash: str | None = None) -> MatchReport:
     jd_hash = jd_hash or compute_jd_hash(jd_text)
     existing_report = get_latest_match_report_by_jd_hash(db, jd_hash)
@@ -21,31 +39,24 @@ def create_job_with_report(db: Session, jd_text: str, job: JobStructured, report
         existing_report.llm_notes = _append_note(existing_report.llm_notes, "命中 SQLite 去重，未重复保存岗位。")
         return existing_report
 
-    db_job = models.Job(
-        jd_hash=jd_hash,
-        company=job.company,
-        title=job.title,
-        location=job.location,
-        job_type=job.job_type,
-        category=job.category,
-        jd_text=jd_text,
-        required_skills=_to_json(job.required_skills),
-        bonus_skills=_to_json(job.bonus_skills),
-        responsibilities=_to_json(job.responsibilities),
-        degree_requirement=job.degree_requirement,
-        graduation_requirement=job.graduation_requirement,
-        intern_duration=job.intern_duration,
-        keywords=_to_json(job.keywords),
-        url=job.url,
-        risk_notes=job.risk_notes,
-        summary=job.summary,
-    )
-    db.add(db_job)
-    db.flush()
+    db_job = get_job_by_jd_hash(db, jd_hash)
+    if not db_job:
+        db_job = _build_job_model(jd_text, job, jd_hash)
+        db.add(db_job)
+        db.flush()
+    _ensure_application(db, db_job.id)
+    return create_match_report_for_job(db, db_job.id, report, jd_hash=jd_hash)
+
+
+def create_match_report_for_job(db: Session, job_id: int, report: MatchReport, jd_hash: str | None = None) -> MatchReport:
+    db_job = get_job(db, job_id)
+    if not db_job:
+        raise ValueError(f"Job not found: {job_id}")
 
     score_details = dict(report.score_details)
     score_details["llm_used"] = str(report.llm_used)
-    score_details["jd_hash"] = jd_hash
+    if jd_hash or db_job.jd_hash:
+        score_details["jd_hash"] = jd_hash or db_job.jd_hash
     if report.llm_notes:
         score_details["llm_notes"] = report.llm_notes
 
@@ -65,15 +76,14 @@ def create_job_with_report(db: Session, jd_text: str, job: JobStructured, report
         score_details=_to_json(score_details),
     )
     db.add(db_report)
-    db.add(models.Application(job_id=db_job.id, status="未投递"))
+    _ensure_application(db, db_job.id)
     db.commit()
     db.refresh(db_job)
 
     report.job_id = db_job.id
-    report.job = job
+    report.job = _job_to_schema(db_job)
     report.score_details = score_details
     return report
-
 
 def list_jobs(db: Session) -> list[dict[str, Any]]:
     jobs = db.query(models.Job).order_by(models.Job.created_at.desc()).all()
@@ -207,6 +217,36 @@ def list_interview_preps(db: Session, job_id: int) -> list[InterviewPrepReport]:
         for row in rows
     ]
 
+
+def _build_job_model(jd_text: str, job: JobStructured, jd_hash: str) -> models.Job:
+    return models.Job(
+        jd_hash=jd_hash,
+        company=job.company,
+        title=job.title,
+        location=job.location,
+        job_type=job.job_type,
+        category=job.category,
+        jd_text=jd_text,
+        required_skills=_to_json(job.required_skills),
+        bonus_skills=_to_json(job.bonus_skills),
+        responsibilities=_to_json(job.responsibilities),
+        degree_requirement=job.degree_requirement,
+        graduation_requirement=job.graduation_requirement,
+        intern_duration=job.intern_duration,
+        keywords=_to_json(job.keywords),
+        url=job.url,
+        risk_notes=job.risk_notes,
+        summary=job.summary,
+    )
+
+
+def _ensure_application(db: Session, job_id: int) -> None:
+    for item in db.new:
+        if isinstance(item, models.Application) and item.job_id == job_id:
+            return
+    exists = db.query(models.Application).filter(models.Application.job_id == job_id).first()
+    if not exists:
+        db.add(models.Application(job_id=job_id, status="未投递"))
 
 def _latest_report(job: models.Job) -> models.MatchReport | None:
     if not job.match_reports:

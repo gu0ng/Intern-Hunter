@@ -23,6 +23,13 @@ class JobMatchRequest(BaseModel):
     jd_text: str
 
 
+class JobAnalyzeResult(BaseModel):
+    job_id: int
+    job: JobStructured
+    cached: bool = False
+    cache_hit: str = "miss"
+
+
 class JobRecord(BaseModel):
     id: int
     company: str
@@ -32,4 +39,3 @@ class JobRecord(BaseModel):
     category: str
     overall_score: float | None = None
     status: str | None = None
-
