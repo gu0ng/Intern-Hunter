@@ -122,3 +122,31 @@ python start.py
 ```
 
 运行后会自动启动 FastAPI 后端和 Streamlit 前端，并打开本地页面。按 Ctrl+C 可以同时停止两个服务。
+
+## Redis 缓存与 JD 去重
+
+项目支持可选 Redis 缓存，用来避免同一个 JD 反复分析时重复入库，并减少重复查询成本：
+
+```text
+REDIS_URL=redis://localhost:6379/0
+ENABLE_REDIS_CACHE=true
+JOB_CACHE_TTL_SECONDS=604800
+```
+
+保存岗位时会先计算 `jd_hash`：
+
+```text
+用户 JD -> 规范化文本 -> SHA-256 jd_hash
+```
+
+然后按以下顺序处理：
+
+```text
+查 Redis: jd_hash -> job_id
+  -> 命中：直接返回已有报告，不新增 jobs
+  -> 未命中：查 SQLite jobs.jd_hash
+      -> 命中：回填 Redis，返回已有报告
+      -> 未命中：保存新岗位、新报告和默认投递状态
+```
+
+Redis 没启动时系统不会报错，会自动回退到 SQLite 去重。

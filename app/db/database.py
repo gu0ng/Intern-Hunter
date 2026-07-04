@@ -1,9 +1,10 @@
-from pathlib import Path
+﻿from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from app.config import settings
+from app.tools.hash_utils import compute_jd_hash
 
 
 def _ensure_sqlite_parent(database_url: str) -> None:
@@ -30,6 +31,23 @@ def init_db() -> None:
     from app.db import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    if settings.database_url.startswith("sqlite"):
+        _migrate_sqlite_jobs_hash()
+
+
+def _migrate_sqlite_jobs_hash() -> None:
+    with engine.begin() as connection:
+        columns = connection.execute(text("PRAGMA table_info(jobs)")).fetchall()
+        column_names = {column[1] for column in columns}
+        if "jd_hash" not in column_names:
+            connection.execute(text("ALTER TABLE jobs ADD COLUMN jd_hash VARCHAR(64) DEFAULT ''"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_jobs_jd_hash ON jobs (jd_hash)"))
+        rows = connection.execute(text("SELECT id, jd_text FROM jobs WHERE jd_hash IS NULL OR jd_hash = ''")).fetchall()
+        for row in rows:
+            connection.execute(
+                text("UPDATE jobs SET jd_hash = :jd_hash WHERE id = :job_id"),
+                {"jd_hash": compute_jd_hash(row.jd_text or ""), "job_id": row.id},
+            )
 
 
 def get_db():
@@ -38,4 +56,3 @@ def get_db():
         yield db
     finally:
         db.close()
-

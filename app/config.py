@@ -20,6 +20,9 @@ class Settings:
     resume_path: str = os.getenv("RESUME_PATH", "data/resume/resume.yaml")
     enable_llm_parsing: bool = os.getenv("ENABLE_LLM_PARSING", "true").lower() == "true"
     api_base_url: str = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
+    redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    enable_redis_cache: bool = os.getenv("ENABLE_REDIS_CACHE", "true").lower() == "true"
+    job_cache_ttl_seconds: int = int(os.getenv("JOB_CACHE_TTL_SECONDS", "604800"))
 
     @property
     def project_root(self) -> Path:

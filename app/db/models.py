@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
@@ -10,6 +10,7 @@ class Job(Base):
     __tablename__ = "jobs"
 
     id = Column(Integer, primary_key=True, index=True)
+    jd_hash = Column(String(64), default="", index=True)
     company = Column(String(255), default="")
     title = Column(String(255), default="")
     location = Column(String(255), default="")
@@ -84,4 +85,3 @@ class Application(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     job = relationship("Job", back_populates="application")
-

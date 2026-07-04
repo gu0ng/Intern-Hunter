@@ -8,13 +8,21 @@ from app.db import models
 from app.schemas.interview import InterviewPrepReport
 from app.schemas.job import JobStructured
 from app.schemas.match import MatchReport
+from app.tools.hash_utils import compute_jd_hash
 
 
 APPLICATION_STATUSES = ["未投递", "已投递", "简历筛选中", "笔试", "一面", "二面", "HR 面", "已拒", "已 offer", "放弃"]
 
 
-def create_job_with_report(db: Session, jd_text: str, job: JobStructured, report: MatchReport) -> MatchReport:
+def create_job_with_report(db: Session, jd_text: str, job: JobStructured, report: MatchReport, jd_hash: str | None = None) -> MatchReport:
+    jd_hash = jd_hash or compute_jd_hash(jd_text)
+    existing_report = get_latest_match_report_by_jd_hash(db, jd_hash)
+    if existing_report:
+        existing_report.llm_notes = _append_note(existing_report.llm_notes, "命中 SQLite 去重，未重复保存岗位。")
+        return existing_report
+
     db_job = models.Job(
+        jd_hash=jd_hash,
         company=job.company,
         title=job.title,
         location=job.location,
@@ -37,6 +45,7 @@ def create_job_with_report(db: Session, jd_text: str, job: JobStructured, report
 
     score_details = dict(report.score_details)
     score_details["llm_used"] = str(report.llm_used)
+    score_details["jd_hash"] = jd_hash
     if report.llm_notes:
         score_details["llm_notes"] = report.llm_notes
 
@@ -62,6 +71,7 @@ def create_job_with_report(db: Session, jd_text: str, job: JobStructured, report
 
     report.job_id = db_job.id
     report.job = job
+    report.score_details = score_details
     return report
 
 
@@ -93,11 +103,22 @@ def get_job(db: Session, job_id: int) -> models.Job | None:
     return db.query(models.Job).filter(models.Job.id == job_id).first()
 
 
+def get_job_by_jd_hash(db: Session, jd_hash: str) -> models.Job | None:
+    return db.query(models.Job).filter(models.Job.jd_hash == jd_hash).order_by(models.Job.created_at.asc()).first()
+
+
 def get_job_structured(db: Session, job_id: int) -> JobStructured | None:
     job = get_job(db, job_id)
     if not job:
         return None
     return _job_to_schema(job)
+
+
+def get_latest_match_report_by_jd_hash(db: Session, jd_hash: str) -> MatchReport | None:
+    job = get_job_by_jd_hash(db, jd_hash)
+    if not job:
+        return None
+    return get_latest_match_report(db, job.id)
 
 
 def get_latest_match_report(db: Session, job_id: int) -> MatchReport | None:
@@ -211,6 +232,10 @@ def _job_to_schema(job: models.Job) -> JobStructured:
         summary=job.summary,
         url=job.url,
     )
+
+
+def _append_note(current: str, note: str) -> str:
+    return f"{current} {note}".strip() if current else note
 
 
 def _to_json(value: Any) -> str:
