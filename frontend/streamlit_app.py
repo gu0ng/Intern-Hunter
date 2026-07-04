@@ -77,9 +77,13 @@ elif page == "岗位分析":
             st.warning("请先粘贴 JD。")
         else:
             try:
-                with st.spinner("正在调用 Agent：DeepSeek 解析 JD -> 读取简历 -> 规则评分 -> DeepSeek 生成建议 -> 入库..."):
+                with st.spinner("正在调用 Agent：检查 Redis/SQLite 缓存 -> 未命中时解析 JD、评分、生成建议并保存..."):
                     report = api_post("/match/run", json={"jd_text": jd_text}, timeout=180)
-                st.success(f"已保存岗位，job_id={report.get('job_id')}")
+                cache_hit = report.get("score_details", {}).get("cache_hit", "")
+                if cache_hit in {"redis_precheck", "sqlite_precheck", "redis", "sqlite"}:
+                    st.success(f"命中已有岗位，job_id={report.get('job_id')}，未重复保存")
+                else:
+                    st.success(f"已保存岗位，job_id={report.get('job_id')}")
                 st.subheader("结构化岗位")
                 st.json(report.get("job", {}))
                 st.subheader("匹配结论")
@@ -205,3 +209,4 @@ elif page == "投递看板":
                 st.success("已更新投递状态。")
             except Exception as exc:
                 render_api_error(exc)
+
