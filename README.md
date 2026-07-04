@@ -1,4 +1,4 @@
-﻿# Intern-Hunter / internship-pilot
+# Intern-Hunter / internship-pilot
 
 面向实习投递和面试准备的个人求职 Agent 系统。当前版本已经从纯规则 MVP 升级为：
 
@@ -114,3 +114,11 @@ PATCH /applications/{job_id}
 - 不发送邮件。
 - 不把 API Key 写入代码或示例文件。
 - `.env` 已被 `.gitignore` 忽略。
+
+## 一键启动
+
+```bash
+python start.py
+```
+
+运行后会自动启动 FastAPI 后端和 Streamlit 前端，并打开本地页面。按 Ctrl+C 可以同时停止两个服务。
