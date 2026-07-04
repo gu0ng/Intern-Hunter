@@ -8,7 +8,7 @@ from app.services.match_scorer import score_match
 from app.services.resume_profiler import load_resume_profile
 from app.tools.cache_tool import JobCacheTool
 from app.tools.hash_utils import compute_jd_hash
-from app.tools.match_advice_tool import enrich_match_report_with_deepseek
+from app.tools.llm_judge_tool import attach_llm_judge
 from app.tools.persistence_tool import PersistenceTool
 
 
@@ -75,8 +75,8 @@ def match_score_node(state: JobMatchState) -> JobMatchState:
     return state
 
 
-def llm_advice_node(state: JobMatchState) -> JobMatchState:
-    state["report"] = enrich_match_report_with_deepseek(state["job"], state["resume"], state["report"])
+def llm_judge_node(state: JobMatchState) -> JobMatchState:
+    state["report"] = attach_llm_judge(state["job"], state["resume"], state["report"])
     return state
 
 
@@ -111,7 +111,7 @@ def build_job_match_graph():
     graph.add_node("jd_parse_node", jd_parse_node)
     graph.add_node("resume_load_node", resume_load_node)
     graph.add_node("match_score_node", match_score_node)
-    graph.add_node("llm_advice_node", llm_advice_node)
+    graph.add_node("llm_judge_node", llm_judge_node)
     graph.add_node("gap_analysis_node", gap_analysis_node)
     graph.add_node("recommendation_node", recommendation_node)
     graph.add_node("save_result_node", save_result_node)
@@ -124,8 +124,8 @@ def build_job_match_graph():
     )
     graph.add_edge("jd_parse_node", "resume_load_node")
     graph.add_edge("resume_load_node", "match_score_node")
-    graph.add_edge("match_score_node", "llm_advice_node")
-    graph.add_edge("llm_advice_node", "gap_analysis_node")
+    graph.add_edge("match_score_node", "llm_judge_node")
+    graph.add_edge("llm_judge_node", "gap_analysis_node")
     graph.add_edge("gap_analysis_node", "recommendation_node")
     graph.add_edge("recommendation_node", "save_result_node")
     graph.add_edge("save_result_node", END)
@@ -156,7 +156,7 @@ def run_job_match_for_saved_job(job_id: int, resume_path: str | None = None, per
         report.score_details["job_id"] = str(job_id)
         if db_job.jd_hash:
             report.score_details["jd_hash"] = db_job.jd_hash
-        report = enrich_match_report_with_deepseek(job, resume, report)
+        report = attach_llm_judge(job, resume, report)
         state: JobMatchState = {"report": report}
         state = gap_analysis_node(state)
         state = recommendation_node(state)
@@ -177,7 +177,7 @@ def _run_sequential(state: JobMatchState) -> JobMatchState:
         jd_parse_node,
         resume_load_node,
         match_score_node,
-        llm_advice_node,
+        llm_judge_node,
         gap_analysis_node,
         recommendation_node,
         save_result_node,

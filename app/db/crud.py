@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.db import models
 from app.schemas.interview import InterviewPrepReport
 from app.schemas.job import JobStructured
-from app.schemas.match import MatchReport
+from app.schemas.match import LLMJudgeReport, MatchReport
 from app.tools.hash_utils import compute_jd_hash
 
 
@@ -60,6 +60,10 @@ def create_match_report_for_job(db: Session, job_id: int, report: MatchReport, j
     if report.llm_notes:
         score_details["llm_notes"] = report.llm_notes
 
+    persisted_score_details = dict(score_details)
+    if report.llm_judge:
+        persisted_score_details["llm_judge"] = report.llm_judge.model_dump()
+
     db_report = models.MatchReport(
         job_id=db_job.id,
         skill_score=report.skill_score,
@@ -73,7 +77,7 @@ def create_match_report_for_job(db: Session, job_id: int, report: MatchReport, j
         recommendation=report.recommendation,
         resume_suggestions=_to_json(report.resume_suggestions),
         preparation_suggestions=_to_json(report.preparation_suggestions),
-        score_details=_to_json(score_details),
+        score_details=_to_json(persisted_score_details),
     )
     db.add(db_report)
     _ensure_application(db, db_job.id)
@@ -142,6 +146,8 @@ def get_latest_match_report(db: Session, job_id: int) -> MatchReport | None:
         return None
     job = get_job_structured(db, job_id)
     score_details = _from_json(report.score_details, {})
+    llm_judge_data = score_details.pop("llm_judge", None)
+    llm_judge = LLMJudgeReport.model_validate(llm_judge_data) if isinstance(llm_judge_data, dict) else None
     return MatchReport(
         job_id=job_id,
         job=job,
@@ -157,6 +163,7 @@ def get_latest_match_report(db: Session, job_id: int) -> MatchReport | None:
         resume_suggestions=_from_json(report.resume_suggestions, []),
         preparation_suggestions=_from_json(report.preparation_suggestions, []),
         score_details=score_details,
+        llm_judge=llm_judge,
         llm_used=score_details.get("llm_used") == "True",
         llm_notes=score_details.get("llm_notes", ""),
     )

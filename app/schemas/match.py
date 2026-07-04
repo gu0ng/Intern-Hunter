@@ -1,6 +1,34 @@
-﻿from pydantic import BaseModel, Field
+﻿from typing import Any
+
+from pydantic import BaseModel, Field
 
 from app.schemas.job import JobStructured
+
+
+class LLMJudgeDimensionScores(BaseModel):
+    skill_match: float = 0
+    project_relevance: float = 0
+    role_direction: float = 0
+    hard_constraints: float = 0
+    experience_depth: float = 0
+    preparation_cost: float = 0
+
+
+class LLMJudgeReport(BaseModel):
+    overall_score: float = 0
+    decision: str = ""
+    confidence: str = ""
+    dimension_scores: LLMJudgeDimensionScores = Field(default_factory=LLMJudgeDimensionScores)
+    matched_evidence: list[str] = Field(default_factory=list)
+    gap_evidence: list[str] = Field(default_factory=list)
+    risk_notes: list[str] = Field(default_factory=list)
+    recommendation: str = ""
+    resume_suggestions: list[str] = Field(default_factory=list)
+    preparation_suggestions: list[str] = Field(default_factory=list)
+    missing_keywords: list[str] = Field(default_factory=list)
+    highlight_keywords: list[str] = Field(default_factory=list)
+    interview_focus: list[str] = Field(default_factory=list)
+    llm_notes: str = ""
 
 
 class MatchReport(BaseModel):
@@ -17,6 +45,7 @@ class MatchReport(BaseModel):
     recommendation: str = ""
     resume_suggestions: list[str] = Field(default_factory=list)
     preparation_suggestions: list[str] = Field(default_factory=list)
-    score_details: dict[str, str] = Field(default_factory=dict)
+    score_details: dict[str, Any] = Field(default_factory=dict)
+    llm_judge: LLMJudgeReport | None = None
     llm_used: bool = False
     llm_notes: str = ""

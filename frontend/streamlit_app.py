@@ -34,30 +34,71 @@ def render_api_error(exc: Exception):
     st.caption("请确认 FastAPI 已启动：uvicorn app.main:app --reload")
 
 
+def render_text_list(items: list[str]):
+    if not items:
+        st.caption("暂无")
+        return
+    for item in items:
+        st.write(f"- {item}")
+
+
 def render_match_report(report: dict):
-    cols = st.columns(5)
-    cols[0].metric("总体", report.get("overall_score"))
-    cols[1].metric("技能", report.get("skill_score"))
-    cols[2].metric("项目", report.get("project_score"))
-    cols[3].metric("方向", report.get("direction_score"))
-    cols[4].metric("约束", report.get("constraint_score"))
-    st.subheader("投递建议")
-    st.write(report.get("recommendation"))
-    st.caption(report.get("llm_notes", ""))
-    st.subheader("优势")
-    for item in report.get("strengths", []):
-        st.write(f"- {item}")
-    st.subheader("短板")
-    for item in report.get("weaknesses", []):
-        st.write(f"- {item}")
-    st.subheader("简历修改建议")
-    for item in report.get("resume_suggestions", []):
-        st.write(f"- {item}")
-    st.subheader("准备建议")
-    for item in report.get("preparation_suggestions", []):
-        st.write(f"- {item}")
-    st.subheader("评分依据")
-    st.json(report.get("score_details", {}))
+    rule_col, llm_col = st.columns(2)
+
+    with rule_col:
+        st.subheader("规则评分")
+        cols = st.columns(2)
+        cols[0].metric("规则总体", report.get("overall_score"))
+        cols[1].metric("技能", report.get("skill_score"))
+        cols = st.columns(3)
+        cols[0].metric("项目", report.get("project_score"))
+        cols[1].metric("方向", report.get("direction_score"))
+        cols[2].metric("约束", report.get("constraint_score"))
+        st.metric("准备成本", report.get("preparation_score"))
+        st.markdown("**规则投递建议**")
+        st.write(report.get("recommendation"))
+        st.markdown("**规则优势**")
+        render_text_list(report.get("strengths", []))
+        st.markdown("**规则短板**")
+        render_text_list(report.get("weaknesses", []))
+        st.markdown("**规则简历建议**")
+        render_text_list(report.get("resume_suggestions", []))
+        with st.expander("规则评分依据"):
+            st.json(report.get("score_details", {}))
+
+    with llm_col:
+        st.subheader("LLM Judge")
+        judge = report.get("llm_judge")
+        if not judge:
+            st.warning(report.get("llm_notes") or "暂无 LLM Judge 结果，请检查 DeepSeek 配置后重新生成。")
+            return
+
+        cols = st.columns(3)
+        cols[0].metric("LLM 总体", judge.get("overall_score"))
+        cols[1].metric("投递决策", judge.get("decision") or "-")
+        cols[2].metric("置信度", judge.get("confidence") or "-")
+        st.markdown("**LLM 维度评分**")
+        st.json(judge.get("dimension_scores", {}))
+        st.markdown("**LLM 结论**")
+        st.write(judge.get("recommendation", ""))
+        st.caption(judge.get("llm_notes", report.get("llm_notes", "")))
+        st.markdown("**匹配证据**")
+        render_text_list(judge.get("matched_evidence", []))
+        st.markdown("**缺口证据**")
+        render_text_list(judge.get("gap_evidence", []))
+        st.markdown("**风险提示**")
+        render_text_list(judge.get("risk_notes", []))
+        st.markdown("**简历修改建议**")
+        render_text_list(judge.get("resume_suggestions", []))
+        st.markdown("**准备建议**")
+        render_text_list(judge.get("preparation_suggestions", []))
+        with st.expander("关键词与面试重点"):
+            st.markdown("**缺失关键词**")
+            render_text_list(judge.get("missing_keywords", []))
+            st.markdown("**应突出关键词**")
+            render_text_list(judge.get("highlight_keywords", []))
+            st.markdown("**面试追问重点**")
+            render_text_list(judge.get("interview_focus", []))
 
 
 st.sidebar.title("Intern-Hunter")
@@ -141,7 +182,7 @@ elif page == "匹配度报告":
         generated_report = None
         if st.button("生成/重新生成匹配度报告", type="primary"):
             try:
-                with st.spinner("正在读取所选简历和岗位，执行规则评分并调用 DeepSeek 生成建议..."):
+                with st.spinner("正在读取所选简历和岗位，执行规则评分并调用 DeepSeek LLM Judge..."):
                     generated_report = api_post(f"/match/jobs/{selected['id']}/run", timeout=180)
                 st.success("匹配度报告已生成。")
             except Exception as exc:
