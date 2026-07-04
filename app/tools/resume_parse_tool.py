@@ -1,4 +1,5 @@
-import re
+﻿import re
+from typing import Any
 
 import yaml
 
@@ -9,13 +10,50 @@ from app.tools.pdf_resume_tool import extract_pdf_text
 
 
 RESUME_SYSTEM_PROMPT = """
-你是中文技术简历解析 Agent。请从用户提供的 PDF 简历文本中抽取结构化简历画像。
-只输出严格 JSON，字段必须包括：
-name, education, major, target_roles, skills, projects, internships,
-research_direction, strengths, weaknesses, city_preference, availability, raw_text_summary, parse_source。
-projects 必须是对象数组，每个对象包含 name, description, keywords, highlights。
-如果字段无法确定，字符串用空字符串，数组用空数组。parse_source 固定为 pdf_llm。
+You are a technical resume parsing agent for Chinese internship candidates.
+Parse the PDF-extracted resume text into strict JSON.
+Required fields: name, education, major, target_roles, skills, projects, internships,
+research_direction, strengths, weaknesses, city_preference, availability,
+raw_text_summary, parse_source.
+Rules:
+1. Return Chinese content when possible.
+2. projects must be an array of objects. Each object has name, description, keywords, highlights.
+3. target_roles, skills, internships, research_direction, strengths, weaknesses, city_preference must be arrays of strings.
+4. If a field is unknown, use an empty string for scalar fields and an empty array for array fields.
+5. parse_source must be pdf_llm.
+Return JSON only.
 """.strip()
+
+
+SCALAR_FIELDS = [
+    "name",
+    "education",
+    "major",
+    "availability",
+    "raw_text_summary",
+    "parse_source",
+]
+
+STRING_LIST_FIELDS = [
+    "target_roles",
+    "skills",
+    "internships",
+    "research_direction",
+    "strengths",
+    "weaknesses",
+    "city_preference",
+]
+
+
+class ResumeParseTool:
+    name = "resume_parse_tool"
+    description = "Extract PDF text and use DeepSeek to parse it into ResumeProfile."
+
+    def run_pdf(self, pdf_bytes: bytes, save: bool = False) -> ResumeParseResult:
+        return parse_resume_pdf_bytes(pdf_bytes, save=save)
+
+    def run_text(self, raw_text: str, save: bool = False) -> ResumeParseResult:
+        return parse_resume_text(raw_text, save=save)
 
 
 def parse_resume_pdf_bytes(pdf_bytes: bytes, save: bool = False) -> ResumeParseResult:
@@ -27,12 +65,12 @@ def parse_resume_text(raw_text: str, save: bool = False) -> ResumeParseResult:
     try:
         payload = call_deepseek_json(
             RESUME_SYSTEM_PROMPT,
-            "请解析以下简历文本，输出 JSON：\n\n" + raw_text[:20000],
+            "Parse this resume text into the required JSON schema:\n\n" + raw_text[:20000],
         )
         payload = _normalize_resume_payload(payload)
         profile = ResumeProfile.model_validate(payload)
         result = ResumeParseResult(profile=profile, raw_text=raw_text, saved=False, llm_used=True)
-    except (LLMClientError, ValueError, KeyError) as exc:
+    except (LLMClientError, ValueError, KeyError, TypeError) as exc:
         profile = _fallback_resume_parse(raw_text)
         result = ResumeParseResult(
             profile=profile,
@@ -55,39 +93,110 @@ def save_resume_profile(profile: ResumeProfile) -> None:
         yaml.safe_dump(profile.model_dump(), file, allow_unicode=True, sort_keys=False)
 
 
-def _normalize_resume_payload(payload: dict) -> dict:
-    """Make LLM output tolerant before Pydantic validation."""
-    list_fields = [
-        "target_roles",
-        "skills",
-        "projects",
-        "internships",
-        "research_direction",
-        "strengths",
-        "weaknesses",
-        "city_preference",
-    ]
-    for field in list_fields:
-        value = payload.get(field)
-        if value is None or value == "":
-            payload[field] = []
-        elif isinstance(value, str):
-            payload[field] = [item.strip() for item in re.split(r"[、,，;；\n]", value) if item.strip()]
+def _normalize_resume_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Make model output tolerant before Pydantic validation."""
+    if not isinstance(payload, dict):
+        raise ValueError("Resume payload must be a JSON object.")
 
-    normalized_projects = []
-    for item in payload.get("projects", []):
-        if isinstance(item, str):
-            normalized_projects.append({"name": item, "description": "", "keywords": [], "highlights": []})
-        elif isinstance(item, dict):
-            for key in ["keywords", "highlights"]:
-                value = item.get(key)
-                if value is None or value == "":
-                    item[key] = []
-                elif isinstance(value, str):
-                    item[key] = [part.strip() for part in re.split(r"[、,，;；\n]", value) if part.strip()]
-            normalized_projects.append(item)
-    payload["projects"] = normalized_projects
+    for field in SCALAR_FIELDS:
+        payload[field] = _stringify_scalar(payload.get(field, ""))
+    if not payload["parse_source"]:
+        payload["parse_source"] = "pdf_llm"
+
+    for field in STRING_LIST_FIELDS:
+        payload[field] = _coerce_string_list(payload.get(field))
+
+    payload["projects"] = _coerce_projects(payload.get("projects"))
     return payload
+
+
+def _coerce_projects(value: Any) -> list[dict[str, Any]]:
+    if value is None or value == "":
+        return []
+    if isinstance(value, dict):
+        value = [value]
+    if isinstance(value, str):
+        value = _split_text_list(value)
+
+    projects: list[dict[str, Any]] = []
+    if not isinstance(value, list):
+        return []
+
+    for item in value:
+        if item is None or item == "":
+            continue
+        if isinstance(item, str):
+            projects.append({"name": item, "description": "", "keywords": [], "highlights": []})
+            continue
+        if isinstance(item, dict):
+            projects.append(
+                {
+                    "name": _stringify_scalar(item.get("name") or item.get("project_name") or item.get("title") or ""),
+                    "description": _stringify_scalar(item.get("description") or item.get("summary") or item.get("content") or ""),
+                    "keywords": _coerce_string_list(item.get("keywords") or item.get("skills") or item.get("tech_stack")),
+                    "highlights": _coerce_string_list(item.get("highlights") or item.get("details") or item.get("achievements")),
+                }
+            )
+    return projects
+
+
+def _coerce_string_list(value: Any) -> list[str]:
+    if value is None or value == "":
+        return []
+    if isinstance(value, str):
+        return _split_text_list(value)
+    if isinstance(value, dict):
+        return [_stringify_mapping(value)]
+    if isinstance(value, list):
+        items: list[str] = []
+        for item in value:
+            if item is None or item == "":
+                continue
+            if isinstance(item, str):
+                items.extend(_split_text_list(item))
+            elif isinstance(item, dict):
+                items.append(_stringify_mapping(item))
+            else:
+                items.append(str(item).strip())
+        return [item for item in items if item]
+    return [str(value).strip()] if str(value).strip() else []
+
+
+def _split_text_list(text: str) -> list[str]:
+    normalized = (
+        text.replace("\u3001", ",")
+        .replace("\uff0c", ",")
+        .replace("\uff1b", ";")
+        .replace("\u2022", "\n")
+    )
+    return [item.strip(" -:\t\r") for item in re.split(r"[,;\n]+", normalized) if item.strip(" -:\t\r")]
+
+
+def _stringify_scalar(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        return _stringify_mapping(value)
+    if isinstance(value, list):
+        return "；".join(_stringify_scalar(item) for item in value if _stringify_scalar(item))
+    return str(value).strip()
+
+
+def _stringify_mapping(value: dict[str, Any]) -> str:
+    parts = []
+    preferred_keys = ["company", "organization", "role", "title", "name", "time", "duration", "description", "content"]
+    used = set()
+    for key in preferred_keys:
+        if key in value and value[key] not in (None, "", []):
+            parts.append(_stringify_scalar(value[key]))
+            used.add(key)
+    for key, item in value.items():
+        if key not in used and item not in (None, "", []):
+            parts.append(f"{key}: {_stringify_scalar(item)}")
+    return "；".join(part for part in parts if part)
+
 
 def _fallback_resume_parse(raw_text: str) -> ResumeProfile:
     skills = _extract_known_terms(
